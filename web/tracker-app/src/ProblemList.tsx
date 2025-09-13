@@ -1,13 +1,13 @@
 import React from 'react';
 import ProblemItem from './ProblemItem';
-import type { ProblemItemProps } from './ProblemItem';
+import type { Problem } from './types';
 
-interface ProblemListProps {
-  problems: ProblemItemProps[];
+type ProblemListProps = {
+  problems: Problem[];
   solved: Record<string, boolean>;
   onToggle: (name: string) => void;
   filter: string;
-}
+};
 
 const ProblemList: React.FC<ProblemListProps> = ({ problems, solved, onToggle, filter }) => {
   return (

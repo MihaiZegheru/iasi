@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [username, setUsername] = useState('');
   const [solved, setSolved] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState('');
+  const [sortOption, setSortOption] = useState('time-asc');
 
   useEffect(() => {
     fetch('/problems')
@@ -35,21 +36,59 @@ const App: React.FC = () => {
     });
   };
 
+
+  // Sorting logic
+  const sortedProblems = React.useMemo(() => {
+    let arr = [...problems];
+    switch (sortOption) {
+      case 'solved':
+        arr.sort((a, b) => Number(!solved[a.name]) - Number(!solved[b.name]));
+        break;
+      case 'unsolved':
+        arr.sort((a, b) => Number(!solved[b.name]) - Number(!solved[a.name]));
+        break;
+      case 'az':
+        arr.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'za':
+        arr.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'time-desc':
+        arr.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        break;
+      case 'time-asc':
+      default:
+        arr.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+        break;
+    }
+    return arr;
+  }, [problems, solved, sortOption]);
+
   const solvedCount = problems.filter(p => solved[p.name]).length;
 
   return (
     <div className="tracker-container">
   <h1>Infoarena Scout &amp; Index</h1>
       <div className="progress">Solved: {solvedCount} / {problems.length}</div>
-      <input
-        type="text"
-        placeholder="Search problems..."
-        value={filter}
-        onChange={e => setFilter(e.target.value)}
-        style={{ marginBottom: '1em', width: '100%', padding: '0.5em' }}
-      />
+      <div style={{ display: 'flex', gap: 12, marginBottom: '1em' }}>
+        <input
+          type="text"
+          placeholder="Search problems..."
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="tracker-input"
+        />
+  <select value={sortOption} onChange={e => setSortOption(e.target.value)} className="sort-dropdown">
+          <option value="time-asc">Sort: Time ↑ (default)</option>
+          <option value="time-desc">Time ↓</option>
+          <option value="solved">Solved first</option>
+          <option value="unsolved">Unsolved first</option>
+          <option value="az">A-Z</option>
+          <option value="za">Z-A</option>
+        </select>
+      </div>
       <ProblemList
-        problems={problems}
+        problems={sortedProblems}
         solved={solved}
         onToggle={handleToggle}
         filter={filter}
