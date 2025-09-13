@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -15,8 +16,13 @@ import (
 // main is the entry point for the CLI tool. It fetches, filters, groups, sorts, and writes the user's 100-point problems to CSV.
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: iasi {username}")
+		fmt.Println("Usage: iasi <username> OR iasi make <username>")
 		os.Exit(1)
+	}
+	if os.Args[1] == "make" && len(os.Args) >= 3 {
+		username := os.Args[2]
+		serveTracker(username)
+		return
 	}
 	username := os.Args[1]
 
@@ -44,6 +50,67 @@ func main() {
 		log.Fatalf("Failed to write CSV: %v", err)
 	}
 	fmt.Printf("Saved %d entries to %s\n", len(final), outPath)
+}
+// serveTracker starts a web server to show the tracker UI and serve the problem list as JSON.
+func serveTracker(username string) {
+	records, err := fetchAllEntries(username)
+	if err != nil {
+		log.Fatalf("Error fetching entries: %v", err)
+	}
+	filtered := filter100PointEntries(records)
+	grouped := groupByProblemEarliest(filtered)
+	final := sortByDate(grouped)
+
+	type Problem struct {
+		Name string `json:"name"`
+		Url  string `json:"url"`
+		Time string `json:"time"`
+	}
+	var problems []Problem
+	for _, record := range final {
+		if len(record) >= 6 {
+			id := record[0]
+			if strings.HasPrefix(id, "#") {
+				id = id[1:]
+			}
+			url := "https://www.infoarena.ro/job_detail/" + id
+			problems = append(problems, Problem{
+				Name: record[2],
+				Url:  url,
+				Time: record[5],
+			})
+		}
+	}
+
+	http.HandleFunc("/problems", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"username":%q,"problems":`, username)
+		fmt.Fprint(w, "[")
+		for i, p := range problems {
+			if i > 0 {
+				fmt.Fprint(w, ",")
+			}
+			fmt.Fprintf(w, `{"name":%q,"url":%q,"time":%q}`, p.Name, p.Url, p.Time)
+		}
+		fmt.Fprint(w, "]}")
+	})
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/tracker.html")
+	})
+	fmt.Println("Tracker UI running at http://localhost:8080/")
+	openBrowser("http://localhost:8080/")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+// openBrowser tries to open the URL in the default browser (Windows only for now).
+func openBrowser(url string) {
+	execCmd := "start " + url
+	_ = execCommand(execCmd)
+}
+
+// execCommand runs a shell command (Windows only).
+func execCommand(cmd string) error {
+	return exec.Command("cmd", "/C", cmd).Start()
 }
 
 // fetchAllEntries paginates and fetches all monitor entries for a given username.
