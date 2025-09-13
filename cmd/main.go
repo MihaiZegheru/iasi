@@ -33,10 +33,17 @@ func main() {
 	grouped := groupByProblemEarliest(filtered)
 	final := sortByDate(grouped)
 
-	if err := writeCSV(username+"_infoarena.csv", final); err != nil {
+	outDir := "data"
+	if _, err := os.Stat(outDir); os.IsNotExist(err) {
+		if err := os.Mkdir(outDir, 0755); err != nil {
+			log.Fatalf("Failed to create data directory: %v", err)
+		}
+	}
+	outPath := outDir + string(os.PathSeparator) + username + "_timeline.csv"
+	if err := writeCSV(outPath, final); err != nil {
 		log.Fatalf("Failed to write CSV: %v", err)
 	}
-	fmt.Printf("Saved %d entries to %s_infoarena.csv\n", len(final), username)
+	fmt.Printf("Saved %d entries to %s\n", len(final), outPath)
 }
 
 // fetchAllEntries paginates and fetches all monitor entries for a given username.
@@ -148,8 +155,20 @@ func writeCSV(filename string, records [][]string) error {
 	defer file.Close()
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
+
+	// Write header
+	writer.Write([]string{"name", "url", "time"})
+
 	for _, record := range records {
-		writer.Write(record)
+		if len(record) >= 6 {
+			id := record[0]
+			if strings.HasPrefix(id, "#") {
+				id = id[1:]
+			}
+			url := "https://www.infoarena.ro/job_detail/" + id
+			pruned := []string{record[2], url, record[5]}
+			writer.Write(pruned)
+		}
 	}
 	return nil
 }
