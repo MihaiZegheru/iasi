@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -16,10 +17,10 @@ import (
 // main is the entry point for the CLI tool. It fetches, filters, groups, sorts, and writes the user's 100-point problems to CSV.
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: iasi <username> OR iasi make <username>")
+		fmt.Println("Usage: iasi <username> OR iasi run <username>")
 		os.Exit(1)
 	}
-	if os.Args[1] == "make" && len(os.Args) >= 3 {
+	if os.Args[1] == "run" && len(os.Args) >= 3 {
 		username := os.Args[2]
 		serveTracker(username)
 		return
@@ -53,6 +54,32 @@ func main() {
 }
 // serveTracker starts a web server to show the tracker UI and serve the problem list as JSON.
 func serveTracker(username string) {
+	// Start React dev server
+	reactCmd := exec.Command("cmd", "/C", "cd web/tracker-app && npm run dev")
+	reactCmd.Stdout = os.Stdout
+	reactCmd.Stderr = os.Stderr
+	if err := reactCmd.Start(); err != nil {
+		log.Fatalf("Failed to start React dev server: %v", err)
+	}
+
+	// Wait for React dev server to be ready
+	ready := false
+	for i := 0; i < 30; i++ {
+		time.Sleep(1 * time.Second)
+		resp, err := http.Get("http://localhost:5173")
+		if err == nil && resp.StatusCode == 200 {
+			ready = true
+			resp.Body.Close()
+			break
+		}
+	}
+	if !ready {
+		log.Println("Warning: React dev server did not become ready in time.")
+	}
+
+	// Open browser to React app
+	openBrowser("http://localhost:5173/")
+
 	records, err := fetchAllEntries(username)
 	if err != nil {
 		log.Fatalf("Error fetching entries: %v", err)
@@ -94,11 +121,17 @@ func serveTracker(username string) {
 		}
 		fmt.Fprint(w, "]}")
 	})
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "web/tracker.html")
-	})
-	fmt.Println("Tracker UI running at http://localhost:8080/")
-	openBrowser("http://localhost:8080/")
+
+	// On exit, kill React dev server
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		<-ch
+		_ = reactCmd.Process.Kill()
+		os.Exit(0)
+	}()
+
+	log.Println("Go API server running at http://localhost:8080 (API only, UI at http://localhost:5173)")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
