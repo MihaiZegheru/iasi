@@ -36,9 +36,25 @@ func main() {
 		return
 	}
 
-	filtered := filter100PointEntries(records)
+	// Convert []monitorRow to [][]string for filter/group/sort
+	var raw [][]string
+	for _, r := range records {
+		raw = append(raw, r.fields)
+	}
+	filtered := filter100PointEntries(raw)
 	grouped := groupByProblemEarliest(filtered)
 	final := sortByDate(grouped)
+
+	// Map back to monitorRow to get problemUrl
+	var finalRows []monitorRow
+	for _, row := range final {
+		for _, r := range records {
+			if len(row) == len(r.fields) && row[0] == r.fields[0] && row[2] == r.fields[2] && row[5] == r.fields[5] {
+				finalRows = append(finalRows, r)
+				break
+			}
+		}
+	}
 
 	outDir := "data"
 	if _, err := os.Stat(outDir); os.IsNotExist(err) {
@@ -47,10 +63,10 @@ func main() {
 		}
 	}
 	outPath := outDir + string(os.PathSeparator) + username + "_timeline.csv"
-	if err := writeCSV(outPath, final); err != nil {
+	if err := writeCSV(outPath, finalRows); err != nil {
 		log.Fatalf("Failed to write CSV: %v", err)
 	}
-	fmt.Printf("Saved %d entries to %s\n", len(final), outPath)
+	fmt.Printf("Saved %d entries to %s\n", len(finalRows), outPath)
 }
 // serveTracker starts a web server to show the tracker UI and serve the problem list as JSON.
 func serveTracker(username string) {
@@ -84,27 +100,46 @@ func serveTracker(username string) {
 	if err != nil {
 		log.Fatalf("Error fetching entries: %v", err)
 	}
-	filtered := filter100PointEntries(records)
+	// Convert []monitorRow to [][]string for filter/group/sort
+	var raw [][]string
+	for _, r := range records {
+		raw = append(raw, r.fields)
+	}
+	filtered := filter100PointEntries(raw)
 	grouped := groupByProblemEarliest(filtered)
 	final := sortByDate(grouped)
 
+	// Map back to monitorRow to get problemUrl
+	var finalRows []monitorRow
+	for _, row := range final {
+		for _, r := range records {
+			if len(row) == len(r.fields) && row[0] == r.fields[0] && row[2] == r.fields[2] && row[5] == r.fields[5] {
+				finalRows = append(finalRows, r)
+				break
+			}
+		}
+	}
+
 	type Problem struct {
-		Name string `json:"name"`
-		Url  string `json:"url"`
-		Time string `json:"time"`
+		Name        string `json:"name"`
+		Url         string `json:"url"`
+		UrlSolution string `json:"url_solution"`
+		Time        string `json:"time"`
 	}
 	var problems []Problem
-	for _, record := range final {
-		if len(record) >= 6 {
-			id := record[0]
+	for _, r := range finalRows {
+		fields := r.fields
+		if len(fields) >= 6 {
+			id := fields[0]
 			if strings.HasPrefix(id, "#") {
 				id = id[1:]
 			}
-			url := "https://www.infoarena.ro/job_detail/" + id
+			urlSolution := "https://www.infoarena.ro/job_detail/" + id
 			problems = append(problems, Problem{
-				Name: record[2],
-				Url:  url,
-				Time: record[5],
+				Name:        fields[2],
+				Url:         r.problemUrl,
+				UrlSolution: urlSolution,
+				Time:        fields[5],
 			})
 		}
 	}
@@ -147,8 +182,13 @@ func execCommand(cmd string) error {
 }
 
 // fetchAllEntries paginates and fetches all monitor entries for a given username.
-func fetchAllEntries(username string) ([][]string, error) {
-	var records [][]string
+type monitorRow struct {
+	fields     []string
+	problemUrl string
+}
+
+func fetchAllEntries(username string) ([]monitorRow, error) {
+	var records []monitorRow
 	pageSize := 250
 	for offset := 0; ; offset += pageSize {
 		url := fmt.Sprintf("https://www.infoarena.ro/monitor?user=%s&display_entries=%d&first_entry=%d", username, pageSize, offset)
@@ -164,11 +204,20 @@ func fetchAllEntries(username string) ([][]string, error) {
 		entriesOnPage := 0
 		doc.Find("table.monitor tbody tr").Each(func(i int, s *goquery.Selection) {
 			var row []string
+			problemUrl := ""
 			s.Find("td").Each(func(j int, td *goquery.Selection) {
 				row = append(row, strings.TrimSpace(td.Text()))
+				if j == 2 { // 3rd column: problem name and link
+					if a := td.Find("a"); a.Length() > 0 {
+						href, exists := a.Attr("href")
+						if exists && strings.HasPrefix(href, "/problema/") {
+							problemUrl = "https://www.infoarena.ro" + href
+						}
+					}
+				}
 			})
 			if len(row) > 0 {
-				records = append(records, row)
+				records = append(records, monitorRow{fields: row, problemUrl: problemUrl})
 				entriesOnPage++
 			}
 		})
@@ -247,7 +296,7 @@ func sortByDate(grouped map[string][]string) [][]string {
 }
 
 // writeCSV writes the records to a CSV file.
-func writeCSV(filename string, records [][]string) error {
+func writeCSV(filename string, records []monitorRow) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -257,16 +306,17 @@ func writeCSV(filename string, records [][]string) error {
 	defer writer.Flush()
 
 	// Write header
-	writer.Write([]string{"name", "url", "time"})
+	writer.Write([]string{"name", "url", "url_solution", "time"})
 
-	for _, record := range records {
-		if len(record) >= 6 {
-			id := record[0]
+	for _, r := range records {
+		fields := r.fields
+		if len(fields) >= 6 {
+			id := fields[0]
 			if strings.HasPrefix(id, "#") {
 				id = id[1:]
 			}
-			url := "https://www.infoarena.ro/job_detail/" + id
-			pruned := []string{record[2], url, record[5]}
+			urlSolution := "https://www.infoarena.ro/job_detail/" + id
+			pruned := []string{fields[2], r.problemUrl, urlSolution, fields[5]}
 			writer.Write(pruned)
 		}
 	}

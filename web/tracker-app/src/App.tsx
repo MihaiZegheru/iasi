@@ -8,7 +8,7 @@ interface ProblemsResponse {
   problems: Problem[];
 }
 
-const LOCAL_KEY_PREFIX = 'iasi_tracker_';
+const GLOBAL_SOLVED_KEY = 'iasi_tracker_global_solved';
 
 const App: React.FC = () => {
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -22,7 +22,7 @@ const App: React.FC = () => {
       .then((data: ProblemsResponse) => {
         setProblems(data.problems);
         setUsername(data.username);
-        const saved = localStorage.getItem(LOCAL_KEY_PREFIX + data.username);
+        const saved = localStorage.getItem(GLOBAL_SOLVED_KEY);
         if (saved) setSolved(JSON.parse(saved));
       });
   }, []);
@@ -30,7 +30,7 @@ const App: React.FC = () => {
   const handleToggle = (name: string) => {
     setSolved(prev => {
       const next = { ...prev, [name]: !prev[name] };
-      localStorage.setItem(LOCAL_KEY_PREFIX + username, JSON.stringify(next));
+      localStorage.setItem(GLOBAL_SOLVED_KEY, JSON.stringify(next));
       return next;
     });
   };
