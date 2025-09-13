@@ -11,8 +11,15 @@ export interface ProblemItemProps {
 const ProblemItem: React.FC<ProblemItemProps> = ({ name, url, time, solved, onToggle }) => (
   <li className="problem-item">
     <input type="checkbox" checked={solved} onChange={onToggle} />
-    <span className={solved ? 'solved' : ''}>{name}</span>
-    <a href={url} target="_blank" rel="noopener noreferrer" className="url-link">link</a>
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={solved ? 'solved url-link' : 'url-link'}
+      style={{ textDecoration: 'none', color: solved ? '#888' : '#0074d9', fontWeight: 500 }}
+    >
+      {name}
+    </a>
     <span style={{ marginLeft: 8, color: '#888' }}>({time})</span>
   </li>
 );

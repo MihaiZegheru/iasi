@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const solvedCount = problems.filter(p => solved[p.name]).length;
 
   return (
-    <div style={{ maxWidth: 600, margin: '2em auto', fontFamily: 'Arial, sans-serif' }}>
+    <div className="tracker-container">
   <h1>Infoarena Scout &amp; Index</h1>
       <div className="progress">Solved: {solvedCount} / {problems.length}</div>
       <input
