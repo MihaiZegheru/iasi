@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AccordionBox from './AccordionBox';
 import { useParams, Link } from 'react-router-dom';
 import type { Problem } from './types';
 
@@ -49,10 +50,12 @@ const ProblemDetails: React.FC = () => {
   if (!problem) return <div>Problem not found. <Link to="/">Back</Link></div>;
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto' }}>
-      <h2>{problem.name}</h2>
-      <div style={{ marginBottom: 16 }}>
-        <a href={problem.url} target="_blank" rel="noopener noreferrer">View on Infoarena</a>
+  <div style={{ width: '100%', maxWidth: 700, margin: '0 auto', padding: '0 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+  <div style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box', overflowX: 'hidden' }}>
+        <h2>{problem.name}</h2>
+        <div style={{ marginBottom: 16 }}>
+          <a href={problem.url} target="_blank" rel="noopener noreferrer">View on Infoarena</a>
+        </div>
       </div>
       {editorial ? (
         <>
@@ -61,11 +64,17 @@ const ProblemDetails: React.FC = () => {
             <button onClick={() => setTab('editorial')} disabled={tab === 'editorial'}>Editorial</button>
           </div>
           {tab === 'hints' ? (
-            <ul>
-              {editorial.hints.map((hint, i) => <li key={i}>{hint}</li>)}
-            </ul>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+              {editorial.hints.map((hint, i) => (
+                <AccordionBox key={i} title={`Hint ${i + 1}`}>{hint}</AccordionBox>
+              ))}
+            </div>
           ) : (
-            <div style={{ whiteSpace: 'pre-line', background: '#f8f8f8', padding: 16, borderRadius: 8 }}>{editorial.editorial}</div>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <AccordionBox title="Editorial">
+                <div style={{ whiteSpace: 'pre-line' }}>{editorial.editorial}</div>
+              </AccordionBox>
+            </div>
           )}
         </>
       ) : (
