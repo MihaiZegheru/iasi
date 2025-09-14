@@ -334,6 +334,7 @@ func serveTracker(username string) {
 	       var result map[string]interface{}
 	       llmJson := llmResp
 	       // Try to extract JSON from code block or text if direct parse fails
+	       var parsedOk bool = true
 	       if err := json.Unmarshal([]byte(llmJson), &result); err != nil {
 		       log.Printf("[WARN] Direct JSON parse failed: %v", err)
 		       // Try to extract JSON from markdown/code block or text
@@ -349,16 +350,20 @@ func serveTracker(username string) {
 					       "hints": []string{"LLM output could not be parsed as JSON."},
 					       "editorial": llmResp,
 				       }
+				       parsedOk = false
 			       }
 		       } else {
 			       result = map[string]interface{}{
 				       "hints": []string{"LLM output could not be parsed as JSON."},
 				       "editorial": llmResp,
 			       }
+			       parsedOk = false
 		       }
 	       }
 	       jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-	       ioutil.WriteFile(editorialPath, jsonBytes, 0644)
+	       if parsedOk {
+		       ioutil.WriteFile(editorialPath, jsonBytes, 0644)
+	       }
 	       w.Header().Set("Content-Type", "application/json")
 	       w.Write(jsonBytes)
 	       log.Printf("[INFO] Editorial for %s generated and returned.", id)
