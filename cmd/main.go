@@ -1,6 +1,7 @@
 package main
 
 import (
+	"iasi/internal/iasiutils"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -16,169 +17,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// buildLLMPrompt creates a prompt for the LLM using the problem statement and solution
-func buildLLMPrompt(statement, solution string) string {
-       // Defensive: if statement or solution is empty, say so in the prompt
-       if strings.TrimSpace(statement) == "" {
-	       statement = "(Problem statement could not be fetched)"
-       }
-       if strings.TrimSpace(solution) == "" {
-	       solution = "(Solution code could not be fetched)"
-       }
-       return fmt.Sprintf(`You are an expert competitive programming assistant. Given the following problem statement and its solution, generate:
-       - 3 helpful hints for a student (in Romanian, do not give away the full solution)
-       - a detailed editorial (in Romanian, explaining the solution and key ideas)
 
-       Problem statement:
-       %s
 
-       Solution:
-       %s
-
-       Return a JSON object with two fields: "hints" (an array of 3 strings) and "editorial" (a string).`, statement, solution)
-}
-
-// fetchInfoarenaProblem fetches the problem statement and solution text from Infoarena for a given job_detail id
-func fetchInfoarenaProblem(id string) (string, string, error) {
-	// 1. Fetch the job_detail page for the solution (for problem link)
-	jobURL := "https://www.infoarena.ro/job_detail/" + id
-	log.Printf("[DEBUG] Fetching job_detail page: %s", jobURL)
-	resp, err := http.Get(jobURL)
-	if err != nil {
-		return "", "", err
-	}
-	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-	bodyStr := string(bodyBytes)
-	log.Printf("[DEBUG] job_detail HTML (first 500 chars): %s", truncateString(bodyStr, 500))
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
-	if err != nil {
-		return "", "", err
-	}
-	// 2. Find the link to the problem page
-	problemURL := ""
-	doc.Find("a").Each(func(i int, s *goquery.Selection) {
-		href, exists := s.Attr("href")
-		if exists && strings.HasPrefix(href, "/problema/") {
-			problemURL = "https://www.infoarena.ro" + href
-		}
-	})
-	log.Printf("[DEBUG] Extracted problemURL: %s", problemURL)
-	if problemURL == "" {
-		return "", "", fmt.Errorf("problem URL not found on job_detail page")
-	}
-	// 3. Fetch the problem page for the statement
-	log.Printf("[DEBUG] Fetching problem page: %s", problemURL)
-	resp2, err := http.Get(problemURL)
-	if err != nil {
-		return "", "", err
-	}
-	defer resp2.Body.Close()
-	body2Bytes, _ := ioutil.ReadAll(resp2.Body)
-	body2Str := string(body2Bytes)
-	log.Printf("[DEBUG] problem page HTML (first 500 chars): %s", truncateString(body2Str, 500))
-	doc2, err := goquery.NewDocumentFromReader(strings.NewReader(body2Str))
-	if err != nil {
-		return "", "", err
-	}
-       // 4. Extract the problem statement (main content)
-       statement := strings.TrimSpace(doc2.Find(".wiki_text_block").Text())
-       if statement == "" {
-	       // fallback: try .content .problem-text
-	       statement = strings.TrimSpace(doc2.Find(".content .problem-text").Text())
-       }
-       if statement == "" {
-	       // fallback: try just .content
-	       statement = strings.TrimSpace(doc2.Find(".content").Text())
-       }
-       if statement == "" {
-	       // fallback: try body text
-	       statement = strings.TrimSpace(doc2.Find("body").Text())
-       }
-       log.Printf("[DEBUG] Extracted statement (first 200 chars): %s", truncateString(statement, 200))
-
-	// 5. Fetch the solution from job_detail/{id}?action=view-source
-	solutionURL := jobURL + "?action=view-source"
-	log.Printf("[DEBUG] Fetching solution page: %s", solutionURL)
-	resp3, err := http.Get(solutionURL)
-	if err != nil {
-		return statement, "", err
-	}
-	defer resp3.Body.Close()
-	solutionBytes, _ := ioutil.ReadAll(resp3.Body)
-	solutionStr := string(solutionBytes)
-	log.Printf("[DEBUG] solution page HTML (first 500 chars): %s", truncateString(solutionStr, 500))
-	doc3, err := goquery.NewDocumentFromReader(strings.NewReader(solutionStr))
-	if err != nil {
-		return statement, "", err
-	}
-
-	// Check if the force_view_source form/button is present
-	if doc3.Find("#force_view_source").Length() > 0 {
-		log.Printf("[INFO] 'Vezi sursa' button detected. Submitting form to reveal source code.")
-		client := &http.Client{Timeout: 30 * time.Second}
-		formData := "force_view_source=Vezi+sursa"
-		req, err := http.NewRequest("POST", solutionURL, strings.NewReader(formData))
-		if err != nil {
-			return statement, "", err
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		resp4, err := client.Do(req)
-		if err != nil {
-			return statement, "", err
-		}
-		defer resp4.Body.Close()
-		solutionBytes, _ = ioutil.ReadAll(resp4.Body)
-		solutionStr = string(solutionBytes)
-		log.Printf("[DEBUG] solution page after form submit (first 500 chars): %s", truncateString(solutionStr, 500))
-		doc3, err = goquery.NewDocumentFromReader(strings.NewReader(solutionStr))
-		if err != nil {
-			return statement, "", err
-		}
-	}
-
-	// Infoarena solution code may be nested in <code class="hljs cpp"> with inner spans, so concatenate all text nodes
-	// Try all <code>, <pre>, <textarea> tags in order, recursively extracting all text
-	extractAllText := func(sel *goquery.Selection) string {
-		var sb strings.Builder
-		var extract func(*goquery.Selection)
-		extract = func(s *goquery.Selection) {
-			s.Contents().Each(func(i int, n *goquery.Selection) {
-				if goquery.NodeName(n) == "#text" {
-					sb.WriteString(n.Text())
-				} else {
-					extract(n)
-				}
-			})
-		}
-		extract(sel)
-		return sb.String()
-	}
-	var solutionBuilder strings.Builder
-	doc3.Find("code").Each(func(i int, sel *goquery.Selection) {
-		solutionBuilder.WriteString(extractAllText(sel))
-		solutionBuilder.WriteString("\n")
-	})
-	doc3.Find("pre").Each(func(i int, sel *goquery.Selection) {
-		solutionBuilder.WriteString(extractAllText(sel))
-		solutionBuilder.WriteString("\n")
-	})
-	doc3.Find("textarea").Each(func(i int, sel *goquery.Selection) {
-		solutionBuilder.WriteString(extractAllText(sel))
-		solutionBuilder.WriteString("\n")
-	})
-	solution := strings.TrimSpace(solutionBuilder.String())
-	log.Printf("[DEBUG] Extracted solution (first 200 chars): %s", truncateString(solution, 200))
-	return statement, solution, nil
-	}
-
-// truncateString returns the first n characters of s, appending ... if truncated
-func truncateString(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
 // callGeminiLLM calls the Gemini LLM API with the prompt and returns the response JSON
 func callGeminiLLM(prompt string) (string, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -203,7 +43,7 @@ func callGeminiLLM(prompt string) (string, error) {
 		return "", err
 	}
 	// Log the raw Gemini response for debugging
-	log.Printf("[DEBUG] Raw Gemini API response: %s", truncateString(string(body), 1000))
+	log.Printf("[DEBUG] Raw Gemini API response: %s", iasiutils.TruncateString(string(body), 1000))
 	// Parse Gemini response
 	var parsed struct {
 		Candidates []struct {
@@ -218,7 +58,7 @@ func callGeminiLLM(prompt string) (string, error) {
 		return "", err
 	}
 	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("No LLM response candidates. Raw response: %s", truncateString(string(body), 1000))
+		return "", fmt.Errorf("No LLM response candidates. Raw response: %s", iasiutils.TruncateString(string(body), 1000))
 	}
 	return parsed.Candidates[0].Content.Parts[0].Text, nil
 }
@@ -309,19 +149,21 @@ func serveTracker(username string) {
 				return
 			}
 		       log.Printf("[INFO] Fetching problem and solution for id %s", id)
-		       statement, solution, err := fetchInfoarenaProblem(id)
+					   ingestor := &iasiutils.InfoarenaIngestor{}
+					   statement, solution, err := ingestor.FetchProblemAndSolution(id)
 		       if err != nil {
 			       log.Printf("[ERROR] Failed to fetch problem/solution: %v", err)
 			       http.Error(w, "Failed to fetch problem/solution: "+err.Error(), 500)
 			       return
 		       }
 		       if strings.TrimSpace(statement) == "" || strings.TrimSpace(solution) == "" {
-			       log.Printf("[ERROR] Statement or solution missing. Statement: '%s' Solution: '%s'", truncateString(statement, 100), truncateString(solution, 100))
+					   log.Printf("[ERROR] Statement or solution missing. Statement: '%s' Solution: '%s'", iasiutils.TruncateString(statement, 100), iasiutils.TruncateString(solution, 100))
 			       http.Error(w, "Problem statement or solution could not be fetched. Please check the Infoarena page structure.", 500)
 			       return
 		       }
 		       log.Printf("[INFO] Problem and solution fetched. Building prompt.")
-		       prompt := buildLLMPrompt(statement, solution)
+					   r := &iasiutils.Recipe{}
+					   prompt := r.BuildLLMPrompt(statement, solution)
 		       log.Printf("[DEBUG] Prompt: %s", prompt)
 		       llmResp, err := callGeminiLLM(prompt)
 		       if err != nil {
