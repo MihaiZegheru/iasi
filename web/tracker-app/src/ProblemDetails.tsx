@@ -54,8 +54,23 @@ const ProblemDetails: React.FC = () => {
   <div style={{ width: '100%', maxWidth: 700, margin: '0 auto', padding: '0 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <div style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box', overflowX: 'hidden' }}>
         <h2>{problem.name}</h2>
-        <div style={{ marginBottom: 16 }}>
-          <a href={problem.url} target="_blank" rel="noopener noreferrer">View on Infoarena</a>
+        <div style={{ marginBottom: 8 }}>
+          <a
+            href={problem.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginRight: 16, color: '#0074d9', fontSize: 15, textDecoration: 'underline' }}
+          >
+            View on Infoarena
+          </a>
+          <a
+            href={`https://www.infoarena.ro/job_detail/${problem.id}?action=view-source`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#0074d9', fontSize: 15, textDecoration: 'underline' }}
+          >
+            View Code
+          </a>
         </div>
       </div>
       {editorial ? (

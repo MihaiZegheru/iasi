@@ -66,8 +66,8 @@ body {
   top: -30px; left: -30px; right: -30px; bottom: -30px;
   z-index: -1;
   border-radius: 40px;
-  background: radial-gradient(circle at 20% 20%, #00ffb411 0%, transparent 70%),
-              radial-gradient(circle at 80% 80%, #00c3ff11 0%, transparent 70%);
+  background: radial-gradient(circle at 20% 20%, #00c3ff22 0%, transparent 70%),
+              radial-gradient(circle at 80% 80%, #00eaff22 0%, transparent 70%);
   filter: blur(24px);
 }
 
