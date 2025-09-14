@@ -19,48 +19,53 @@ import (
 
 
 
-// callGeminiLLM calls the Gemini LLM API with the prompt and returns the response JSON
-func callGeminiLLM(prompt string) (string, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		 return "", fmt.Errorf("GEMINI_API_KEY not set")
-	}
-	url := "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey
-	reqBody := fmt.Sprintf(`{"contents":[{"parts":[{"text":%q}]}]}`, prompt)
-	req, err := http.NewRequest("POST", url, strings.NewReader(reqBody))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	// Log the raw Gemini response for debugging
-	log.Printf("[DEBUG] Raw Gemini API response: %s", iasiutils.TruncateString(string(body), 1000))
-	// Parse Gemini response
-	var parsed struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", err
-	}
-	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("No LLM response candidates. Raw response: %s", iasiutils.TruncateString(string(body), 1000))
-	}
-	return parsed.Candidates[0].Content.Parts[0].Text, nil
+// callGeminiLLM calls the Gemini LLM API with the prompt and optional system prompt, and returns the response JSON
+func callGeminiLLM(prompt string, systemPrompt ...string) (string, error) {
+       apiKey := os.Getenv("GEMINI_API_KEY")
+       if apiKey == "" {
+		return "", fmt.Errorf("GEMINI_API_KEY not set")
+       }
+       url := "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey
+       var parts []string
+       if len(systemPrompt) > 0 && strings.TrimSpace(systemPrompt[0]) != "" {
+	       parts = append(parts, fmt.Sprintf(`{"text":%q}`, systemPrompt[0]))
+       }
+       parts = append(parts, fmt.Sprintf(`{"text":%q}`, prompt))
+       reqBody := fmt.Sprintf(`{"contents":[{"parts":[%s]}]}`, strings.Join(parts, ","))
+       req, err := http.NewRequest("POST", url, strings.NewReader(reqBody))
+       if err != nil {
+	       return "", err
+       }
+       req.Header.Set("Content-Type", "application/json")
+       client := &http.Client{Timeout: 60 * time.Second}
+       resp, err := client.Do(req)
+       if err != nil {
+	       return "", err
+       }
+       defer resp.Body.Close()
+       body, err := ioutil.ReadAll(resp.Body)
+       if err != nil {
+	       return "", err
+       }
+       // Log the raw Gemini response for debugging
+       log.Printf("[DEBUG] Raw Gemini API response: %s", iasiutils.TruncateString(string(body), 1000))
+       // Parse Gemini response
+       var parsed struct {
+	       Candidates []struct {
+		       Content struct {
+			       Parts []struct {
+				       Text string `json:"text"`
+			       } `json:"parts"`
+		       } `json:"content"`
+	       } `json:"candidates"`
+       }
+       if err := json.Unmarshal(body, &parsed); err != nil {
+	       return "", err
+       }
+       if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
+	       return "", fmt.Errorf("No LLM response candidates. Raw response: %s", iasiutils.TruncateString(string(body), 1000))
+       }
+       return parsed.Candidates[0].Content.Parts[0].Text, nil
 }
 
 // main is the entry point for the CLI tool. It fetches, filters, groups, sorts, and writes the user's 100-point problems to CSV.
@@ -162,10 +167,10 @@ func serveTracker(username string) {
 			       return
 		       }
 		       log.Printf("[INFO] Problem and solution fetched. Building prompt.")
-					   r := &iasiutils.Recipe{}
-					   prompt := r.BuildLLMPrompt(statement, solution)
-		       log.Printf("[DEBUG] Prompt: %s", prompt)
-		       llmResp, err := callGeminiLLM(prompt)
+					   r := &iasiutils.Recipe{SystemPrompt: "You are a helpful assistant for competitive programming and you know very well the competitive programming platform, Codeforces and how editorials and hints are written there. Always answer in Romanian."}
+					   prompt, systemPrompt := r.BuildLLMPrompt(statement, solution)
+					   log.Printf("[DEBUG] Prompt: %s", prompt)
+					   llmResp, err := callGeminiLLM(prompt, systemPrompt)
 		       if err != nil {
 			       log.Printf("[ERROR] LLM error: %v", err)
 			       http.Error(w, "LLM error: "+err.Error(), 500)

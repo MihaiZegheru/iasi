@@ -3,25 +3,29 @@ package iasiutils
 import "fmt"
 
 // Recipe handles prompt building and related logic for LLMs.
-type Recipe struct{}
+type Recipe struct {
+	SystemPrompt string
+}
 
 // BuildLLMPrompt creates a prompt for the LLM using the problem statement and solution
-func (r *Recipe) BuildLLMPrompt(statement, solution string) string {
+func (r *Recipe) BuildLLMPrompt(statement, solution string) (prompt string, systemPrompt string) {
 	if len(statement) == 0 {
 		statement = "(Problem statement could not be fetched)"
 	}
 	if len(solution) == 0 {
 		solution = "(Solution code could not be fetched)"
 	}
-	return fmt.Sprintf(`You are an expert competitive programming assistant. Given the following problem statement and its solution, generate:
-- 3 helpful hints for a student (in Romanian, do not give away the full solution)
-- a detailed editorial (in Romanian, explaining the solution and key ideas)
+	prompt = fmt.Sprintf(`You are an expert competitive programming assistant. Given the following problem statement and its solution, generate:
+	- some helpful hints for a student (in Romanian, do not give away the full solution). Make them so that the student can understand the key ideas and approach to solve the problem on their own. They should gradually lead the student to the solution, without revealing it directly. Provide around 3 hints. Adjust the number based on the complexity and difficulty of the problem. Keep the hints concise and to the point, rather short, don't give away too much.
+	- a detailed editorial (in Romanian, explaining the solution and key ideas). Don't include snippets of code from the solution. Do an editoril like on Codeforces.
 
 Problem statement:
 %s
 
-Solution:
+Solution (this is not the official solution):
 %s
 
-Return a JSON object with two fields: "hints" (an array of 3 strings) and "editorial" (a string).`, statement, solution)
+Return a JSON object with two fields: "hints" (an array of strings) and "editorial" (a string).`, statement, solution)
+	systemPrompt = r.SystemPrompt
+	return
 }
