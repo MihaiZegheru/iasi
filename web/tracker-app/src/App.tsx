@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import ProblemList from './ProblemList';
+import ProblemDetails from './ProblemDetails';
 import type { Problem } from './types';
 import './App.css';
 
@@ -67,33 +69,41 @@ const App: React.FC = () => {
   const solvedCount = problems.filter(p => solved[p.name]).length;
 
   return (
-    <div className="tracker-container">
-  <h1>Infoarena Scout &amp; Index</h1>
-      <div className="progress">Solved: {solvedCount} / {problems.length}</div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: '1em' }}>
-        <input
-          type="text"
-          placeholder="Search problems..."
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          className="tracker-input"
-        />
-  <select value={sortOption} onChange={e => setSortOption(e.target.value)} className="sort-dropdown">
-          <option value="time-asc">Sort: Time ↑ (default)</option>
-          <option value="time-desc">Time ↓</option>
-          <option value="solved">Solved first</option>
-          <option value="unsolved">Unsolved first</option>
-          <option value="az">A-Z</option>
-          <option value="za">Z-A</option>
-        </select>
-      </div>
-      <ProblemList
-        problems={sortedProblems}
-        solved={solved}
-        onToggle={handleToggle}
-        filter={filter}
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <div className="tracker-container">
+            <h1>Infoarena Scout &amp; Index</h1>
+            <div className="progress">Solved: {solvedCount} / {problems.length}</div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: '1em' }}>
+              <input
+                type="text"
+                placeholder="Search problems..."
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                className="tracker-input"
+              />
+              <select value={sortOption} onChange={e => setSortOption(e.target.value)} className="sort-dropdown">
+                <option value="time-asc">Sort: Time ↑ (default)</option>
+                <option value="time-desc">Time ↓</option>
+                <option value="solved">Solved first</option>
+                <option value="unsolved">Unsolved first</option>
+                <option value="az">A-Z</option>
+                <option value="za">Z-A</option>
+              </select>
+            </div>
+            <ProblemList
+              problems={sortedProblems}
+              solved={solved}
+              onToggle={handleToggle}
+              filter={filter}
+            />
+          </div>
+        }
       />
-    </div>
+      <Route path="/problem/:id" element={<ProblemDetails />} />
+    </Routes>
   );
 };
 

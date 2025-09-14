@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +15,213 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// buildLLMPrompt creates a prompt for the LLM using the problem statement and solution
+func buildLLMPrompt(statement, solution string) string {
+       // Defensive: if statement or solution is empty, say so in the prompt
+       if strings.TrimSpace(statement) == "" {
+	       statement = "(Problem statement could not be fetched)"
+       }
+       if strings.TrimSpace(solution) == "" {
+	       solution = "(Solution code could not be fetched)"
+       }
+       return fmt.Sprintf(`You are an expert competitive programming assistant. Given the following problem statement and its solution, generate:
+       - 3 helpful hints for a student (in Romanian, do not give away the full solution)
+       - a detailed editorial (in Romanian, explaining the solution and key ideas)
+
+       Problem statement:
+       %s
+
+       Solution:
+       %s
+
+       Return a JSON object with two fields: "hints" (an array of 3 strings) and "editorial" (a string).`, statement, solution)
+}
+
+// fetchInfoarenaProblem fetches the problem statement and solution text from Infoarena for a given job_detail id
+func fetchInfoarenaProblem(id string) (string, string, error) {
+	// 1. Fetch the job_detail page for the solution (for problem link)
+	jobURL := "https://www.infoarena.ro/job_detail/" + id
+	log.Printf("[DEBUG] Fetching job_detail page: %s", jobURL)
+	resp, err := http.Get(jobURL)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyStr := string(bodyBytes)
+	log.Printf("[DEBUG] job_detail HTML (first 500 chars): %s", truncateString(bodyStr, 500))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
+	if err != nil {
+		return "", "", err
+	}
+	// 2. Find the link to the problem page
+	problemURL := ""
+	doc.Find("a").Each(func(i int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+		if exists && strings.HasPrefix(href, "/problema/") {
+			problemURL = "https://www.infoarena.ro" + href
+		}
+	})
+	log.Printf("[DEBUG] Extracted problemURL: %s", problemURL)
+	if problemURL == "" {
+		return "", "", fmt.Errorf("problem URL not found on job_detail page")
+	}
+	// 3. Fetch the problem page for the statement
+	log.Printf("[DEBUG] Fetching problem page: %s", problemURL)
+	resp2, err := http.Get(problemURL)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp2.Body.Close()
+	body2Bytes, _ := ioutil.ReadAll(resp2.Body)
+	body2Str := string(body2Bytes)
+	log.Printf("[DEBUG] problem page HTML (first 500 chars): %s", truncateString(body2Str, 500))
+	doc2, err := goquery.NewDocumentFromReader(strings.NewReader(body2Str))
+	if err != nil {
+		return "", "", err
+	}
+       // 4. Extract the problem statement (main content)
+       statement := strings.TrimSpace(doc2.Find(".wiki_text_block").Text())
+       if statement == "" {
+	       // fallback: try .content .problem-text
+	       statement = strings.TrimSpace(doc2.Find(".content .problem-text").Text())
+       }
+       if statement == "" {
+	       // fallback: try just .content
+	       statement = strings.TrimSpace(doc2.Find(".content").Text())
+       }
+       if statement == "" {
+	       // fallback: try body text
+	       statement = strings.TrimSpace(doc2.Find("body").Text())
+       }
+       log.Printf("[DEBUG] Extracted statement (first 200 chars): %s", truncateString(statement, 200))
+
+	// 5. Fetch the solution from job_detail/{id}?action=view-source
+	solutionURL := jobURL + "?action=view-source"
+	log.Printf("[DEBUG] Fetching solution page: %s", solutionURL)
+	resp3, err := http.Get(solutionURL)
+	if err != nil {
+		return statement, "", err
+	}
+	defer resp3.Body.Close()
+	solutionBytes, _ := ioutil.ReadAll(resp3.Body)
+	solutionStr := string(solutionBytes)
+	log.Printf("[DEBUG] solution page HTML (first 500 chars): %s", truncateString(solutionStr, 500))
+	doc3, err := goquery.NewDocumentFromReader(strings.NewReader(solutionStr))
+	if err != nil {
+		return statement, "", err
+	}
+
+	// Check if the force_view_source form/button is present
+	if doc3.Find("#force_view_source").Length() > 0 {
+		log.Printf("[INFO] 'Vezi sursa' button detected. Submitting form to reveal source code.")
+		client := &http.Client{Timeout: 30 * time.Second}
+		formData := "force_view_source=Vezi+sursa"
+		req, err := http.NewRequest("POST", solutionURL, strings.NewReader(formData))
+		if err != nil {
+			return statement, "", err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp4, err := client.Do(req)
+		if err != nil {
+			return statement, "", err
+		}
+		defer resp4.Body.Close()
+		solutionBytes, _ = ioutil.ReadAll(resp4.Body)
+		solutionStr = string(solutionBytes)
+		log.Printf("[DEBUG] solution page after form submit (first 500 chars): %s", truncateString(solutionStr, 500))
+		doc3, err = goquery.NewDocumentFromReader(strings.NewReader(solutionStr))
+		if err != nil {
+			return statement, "", err
+		}
+	}
+
+	// Infoarena solution code may be nested in <code class="hljs cpp"> with inner spans, so concatenate all text nodes
+	// Try all <code>, <pre>, <textarea> tags in order, recursively extracting all text
+	extractAllText := func(sel *goquery.Selection) string {
+		var sb strings.Builder
+		var extract func(*goquery.Selection)
+		extract = func(s *goquery.Selection) {
+			s.Contents().Each(func(i int, n *goquery.Selection) {
+				if goquery.NodeName(n) == "#text" {
+					sb.WriteString(n.Text())
+				} else {
+					extract(n)
+				}
+			})
+		}
+		extract(sel)
+		return sb.String()
+	}
+	var solutionBuilder strings.Builder
+	doc3.Find("code").Each(func(i int, sel *goquery.Selection) {
+		solutionBuilder.WriteString(extractAllText(sel))
+		solutionBuilder.WriteString("\n")
+	})
+	doc3.Find("pre").Each(func(i int, sel *goquery.Selection) {
+		solutionBuilder.WriteString(extractAllText(sel))
+		solutionBuilder.WriteString("\n")
+	})
+	doc3.Find("textarea").Each(func(i int, sel *goquery.Selection) {
+		solutionBuilder.WriteString(extractAllText(sel))
+		solutionBuilder.WriteString("\n")
+	})
+	solution := strings.TrimSpace(solutionBuilder.String())
+	log.Printf("[DEBUG] Extracted solution (first 200 chars): %s", truncateString(solution, 200))
+	return statement, solution, nil
+	}
+
+// truncateString returns the first n characters of s, appending ... if truncated
+func truncateString(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+// callGeminiLLM calls the Gemini LLM API with the prompt and returns the response JSON
+func callGeminiLLM(prompt string) (string, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		 return "", fmt.Errorf("GEMINI_API_KEY not set")
+	}
+	url := "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey
+	reqBody := fmt.Sprintf(`{"contents":[{"parts":[{"text":%q}]}]}`, prompt)
+	req, err := http.NewRequest("POST", url, strings.NewReader(reqBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	// Log the raw Gemini response for debugging
+	log.Printf("[DEBUG] Raw Gemini API response: %s", truncateString(string(body), 1000))
+	// Parse Gemini response
+	var parsed struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", err
+	}
+	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("No LLM response candidates. Raw response: %s", truncateString(string(body), 1000))
+	}
+	return parsed.Candidates[0].Content.Parts[0].Text, nil
+}
 
 // main is the entry point for the CLI tool. It fetches, filters, groups, sorts, and writes the user's 100-point problems to CSV.
 func main() {
@@ -70,8 +279,113 @@ func main() {
 }
 // serveTracker starts a web server to show the tracker UI and serve the problem list as JSON.
 func serveTracker(username string) {
-	// Start React dev server
-	reactCmd := exec.Command("cmd", "/C", "cd web/tracker-app && npm run dev")
+	// Log to console only (no debug.log file)
+	log.SetOutput(os.Stdout)
+	log.Println("[INFO] serveTracker started for user:", username)
+
+	// From here, only Go logs go to debug.log. React dev server output goes to console.
+
+	// --- LLM Editorial/Hints API ---
+	// POST /problems/{id}/generate
+	http.HandleFunc("/problems/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/problems/")
+		parts := strings.Split(path, "/")
+		if len(parts) < 2 {
+			log.Printf("[ERROR] Invalid /problems/ path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		id := parts[0]
+		action := parts[1]
+		editorialPath := "data/editorials/" + id + ".json"
+		if action == "generate" && r.Method == "POST" {
+			log.Printf("[INFO] /problems/%s/generate POST called", id)
+			// Check cache first
+			if _, err := os.Stat(editorialPath); err == nil {
+				log.Printf("[INFO] Editorial cache hit for %s", editorialPath)
+				data, _ := ioutil.ReadFile(editorialPath)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(data)
+				return
+			}
+		       log.Printf("[INFO] Fetching problem and solution for id %s", id)
+		       statement, solution, err := fetchInfoarenaProblem(id)
+		       if err != nil {
+			       log.Printf("[ERROR] Failed to fetch problem/solution: %v", err)
+			       http.Error(w, "Failed to fetch problem/solution: "+err.Error(), 500)
+			       return
+		       }
+		       if strings.TrimSpace(statement) == "" || strings.TrimSpace(solution) == "" {
+			       log.Printf("[ERROR] Statement or solution missing. Statement: '%s' Solution: '%s'", truncateString(statement, 100), truncateString(solution, 100))
+			       http.Error(w, "Problem statement or solution could not be fetched. Please check the Infoarena page structure.", 500)
+			       return
+		       }
+		       log.Printf("[INFO] Problem and solution fetched. Building prompt.")
+		       prompt := buildLLMPrompt(statement, solution)
+		       log.Printf("[DEBUG] Prompt: %s", prompt)
+		       llmResp, err := callGeminiLLM(prompt)
+		       if err != nil {
+			       log.Printf("[ERROR] LLM error: %v", err)
+			       http.Error(w, "LLM error: "+err.Error(), 500)
+			       return
+		       }
+		       log.Printf("[INFO] LLM response received. Raw response: %s", llmResp)
+		       log.Printf("[INFO] Attempting to parse JSON.")
+	       var result map[string]interface{}
+	       llmJson := llmResp
+	       // Try to extract JSON from code block or text if direct parse fails
+	       if err := json.Unmarshal([]byte(llmJson), &result); err != nil {
+		       log.Printf("[WARN] Direct JSON parse failed: %v", err)
+		       // Try to extract JSON from markdown/code block or text
+		       jsonStart := strings.Index(llmResp, "{")
+		       jsonEnd := strings.LastIndex(llmResp, "}")
+		       if jsonStart != -1 && jsonEnd > jsonStart {
+			       llmJson = llmResp[jsonStart : jsonEnd+1]
+			       if err2 := json.Unmarshal([]byte(llmJson), &result); err2 == nil {
+				       log.Printf("[INFO] JSON extracted from LLM output.")
+			       } else {
+				       log.Printf("[WARN] JSON extraction also failed: %v", err2)
+				       result = map[string]interface{}{
+					       "hints": []string{"LLM output could not be parsed as JSON."},
+					       "editorial": llmResp,
+				       }
+			       }
+		       } else {
+			       result = map[string]interface{}{
+				       "hints": []string{"LLM output could not be parsed as JSON."},
+				       "editorial": llmResp,
+			       }
+		       }
+	       }
+	       jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+	       ioutil.WriteFile(editorialPath, jsonBytes, 0644)
+	       w.Header().Set("Content-Type", "application/json")
+	       w.Write(jsonBytes)
+	       log.Printf("[INFO] Editorial for %s generated and returned.", id)
+	       return
+		}
+		if action == "editorial" && r.Method == "GET" {
+			if _, err := os.Stat(editorialPath); err == nil {
+				log.Printf("[INFO] Editorial cache GET for %s", editorialPath)
+				data, _ := ioutil.ReadFile(editorialPath)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(data)
+				return
+			}
+			log.Printf("[WARN] Editorial not generated for %s", editorialPath)
+			http.Error(w, "Not generated", http.StatusNotFound)
+			return
+		}
+		log.Printf("[ERROR] Unknown /problems/ action: %s", action)
+		http.NotFound(w, r)
+	})
+	// Start React dev server (output to console)
+	var reactCmd *exec.Cmd
+	if os.PathSeparator == '\\' { // Windows
+		reactCmd = exec.Command("cmd", "/C", "cd web/tracker-app && npm run dev")
+	} else {
+		reactCmd = exec.Command("sh", "-c", "cd web/tracker-app && npm run dev")
+	}
 	reactCmd.Stdout = os.Stdout
 	reactCmd.Stderr = os.Stderr
 	if err := reactCmd.Start(); err != nil {
@@ -95,6 +409,15 @@ func serveTracker(username string) {
 
 	// Open browser to React app
 	openBrowser("http://localhost:5173/")
+
+	// On exit, kill React dev server
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		<-ch
+		_ = reactCmd.Process.Kill()
+		os.Exit(0)
+	}()
 
 	records, err := fetchAllEntries(username)
 	if err != nil {
@@ -125,14 +448,24 @@ func serveTracker(username string) {
 		Url         string `json:"url"`
 		UrlSolution string `json:"url_solution"`
 		Time        string `json:"time"`
+		Id          string `json:"id"`
 	}
 	var problems []Problem
 	for _, r := range finalRows {
 		fields := r.fields
 		if len(fields) >= 6 {
-			id := fields[0]
-			if strings.HasPrefix(id, "#") {
-				id = id[1:]
+			// Try to extract job_detail id from problemUrl if possible
+			id := ""
+			if strings.Contains(r.problemUrl, "/job_detail/") {
+				parts := strings.Split(r.problemUrl, "/job_detail/")
+				if len(parts) > 1 {
+					id = parts[1]
+				}
+			} else {
+				id = fields[0]
+				if strings.HasPrefix(id, "#") {
+					id = id[1:]
+				}
 			}
 			urlSolution := "https://www.infoarena.ro/job_detail/" + id
 			problems = append(problems, Problem{
@@ -140,6 +473,7 @@ func serveTracker(username string) {
 				Url:         r.problemUrl,
 				UrlSolution: urlSolution,
 				Time:        fields[5],
+				Id:          id,
 			})
 		}
 	}
@@ -152,19 +486,19 @@ func serveTracker(username string) {
 			if i > 0 {
 				fmt.Fprint(w, ",")
 			}
-			fmt.Fprintf(w, `{"name":%q,"url":%q,"time":%q}`, p.Name, p.Url, p.Time)
+			fmt.Fprintf(w, `{"name":%q,"url":%q,"time":%q,"id":%q}`, p.Name, p.Url, p.Time, p.Id)
 		}
 		fmt.Fprint(w, "]}")
 	})
 
-	// On exit, kill React dev server
-	go func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, os.Interrupt)
-		<-ch
-		_ = reactCmd.Process.Kill()
-		os.Exit(0)
-	}()
+		// On exit, kill React dev server (disabled for debugging)
+		// go func() {
+		// 	ch := make(chan os.Signal, 1)
+		// 	signal.Notify(ch, os.Interrupt)
+		// 	<-ch
+		// 	_ = reactCmd.Process.Kill()
+		// 	os.Exit(0)
+		// }()
 
 	log.Println("Go API server running at http://localhost:8080 (API only, UI at http://localhost:5173)")
 	log.Fatal(http.ListenAndServe(":8080", nil))

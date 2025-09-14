@@ -31,6 +31,20 @@ bin/iasi.exe run <username>
 - The tracker UI will open at [http://localhost:5173](http://localhost:5173)
 - The Go backend API is at [http://localhost:8080](http://localhost:8080)
 
+### 2.1. Set up Gemini API Key (for AI features)
+
+To enable AI-powered hints and editorials, you must set your Gemini API key as an environment variable before running the backend:
+
+**On Windows PowerShell:**
+```powershell
+$env:GEMINI_API_KEY="your-key-here"
+```
+
+Replace `your-key-here` with your actual Gemini API key. You can get a key from Google AI.
+
+- You must run this command in the same terminal session before starting the backend with `bin/iasi.exe run <username>`.
+- For permanent setup, add it to your user or system environment variables.
+
 ### 3. Use the Web UI
 - Check/uncheck problems to track your progress.
 - Use the search and sort controls for fast navigation.
