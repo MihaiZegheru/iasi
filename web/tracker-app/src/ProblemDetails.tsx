@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AccordionBox from './AccordionBox';
+import MarkdownView from './MarkdownView';
 import { useParams, Link } from 'react-router-dom';
 import type { Problem } from './types';
 
@@ -66,13 +67,15 @@ const ProblemDetails: React.FC = () => {
           {tab === 'hints' ? (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
               {editorial.hints.map((hint, i) => (
-                <AccordionBox key={i} title={`Hint ${i + 1}`}>{hint}</AccordionBox>
+                <AccordionBox key={i} title={`Hint ${i + 1}`}>
+                  <MarkdownView>{hint}</MarkdownView>
+                </AccordionBox>
               ))}
             </div>
           ) : (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
               <AccordionBox title="Editorial">
-                <div style={{ whiteSpace: 'pre-line' }}>{editorial.editorial}</div>
+                <MarkdownView>{editorial.editorial}</MarkdownView>
               </AccordionBox>
             </div>
           )}

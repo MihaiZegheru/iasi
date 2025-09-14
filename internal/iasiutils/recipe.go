@@ -16,8 +16,8 @@ func (r *Recipe) BuildLLMPrompt(statement, solution string) (prompt string, syst
 		solution = "(Solution code could not be fetched)"
 	}
 	prompt = fmt.Sprintf(`You are an expert competitive programming assistant. Given the following problem statement and its solution, generate:
-	- some helpful hints for a student (in Romanian, do not give away the full solution). Make them so that the student can understand the key ideas and approach to solve the problem on their own. They should gradually lead the student to the solution, without revealing it directly. Provide around 3 hints. Adjust the number based on the complexity and difficulty of the problem. Keep the hints concise and to the point, rather short, don't give away too much.
-	- a detailed editorial (in Romanian, explaining the solution and key ideas). Don't include snippets of code from the solution. Do an editoril like on Codeforces.
+	- some helpful hints for a student (in English, do not give away the full solution). Make them so that the student can understand the key ideas and approach to solve the problem on their own. They should gradually lead the student to the solution, without revealing it directly. Provide around 3 hints. Adjust the number based on the complexity and difficulty of the problem. Keep the hints concise and to the point, rather short, don't give away too much.
+	- a detailed editorial (in English, explaining the solution and key ideas). Don't include snippets of code from the solution. Do an editoril like on Codeforces. Please structure it in markdown format with the necessary sections.
 
 Problem statement:
 %s

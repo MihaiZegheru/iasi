@@ -167,7 +167,7 @@ func serveTracker(username string) {
 			       return
 		       }
 		       log.Printf("[INFO] Problem and solution fetched. Building prompt.")
-					   r := &iasiutils.Recipe{SystemPrompt: "You are a helpful assistant for competitive programming and you know very well the competitive programming platform, Codeforces and how editorials and hints are written there. Always answer in Romanian."}
+					   r := &iasiutils.Recipe{SystemPrompt: "You are a helpful assistant for competitive programming and you know very well the competitive programming platform, Codeforces and how editorials and hints are written there. Always answer in English."}
 					   prompt, systemPrompt := r.BuildLLMPrompt(statement, solution)
 					   log.Printf("[DEBUG] Prompt: %s", prompt)
 					   llmResp, err := callGeminiLLM(prompt, systemPrompt)
