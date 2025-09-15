@@ -74,7 +74,8 @@ const App: React.FC = () => {
         path="/"
         element={
           <div className="tracker-container">
-            <h1>Infoarena Scout &amp; Index</h1>
+            <h1 className="gradient-title" style={{marginBottom: 0}}>Infoarena</h1>
+            <h1 className="gradient-title" style={{fontSize: '2.2em', marginTop: 0.1 + 'em'}}>Scout &amp; Index</h1>
             <div className="progress">Solved: {solvedCount} / {problems.length}</div>
             <div style={{ display: 'flex', gap: 12, marginBottom: '1em' }}>
               <input

@@ -6,7 +6,11 @@ interface MarkdownViewProps {
 }
 
 const MarkdownView: React.FC<MarkdownViewProps> = ({ children }) => {
-  return <ReactMarkdown>{children}</ReactMarkdown>;
+  return (
+    <div className="markdown-centered">
+      <ReactMarkdown>{children}</ReactMarkdown>
+    </div>
+  );
 };
 
 export default MarkdownView;

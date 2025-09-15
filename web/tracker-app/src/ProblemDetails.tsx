@@ -51,36 +51,42 @@ const ProblemDetails: React.FC = () => {
   if (!problem) return <div>Problem not found. <Link to="/">Back</Link></div>;
 
   return (
-  <div style={{ width: '100%', maxWidth: 700, margin: '0 auto', padding: '0 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <div style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box', overflowX: 'hidden' }}>
-        <h2>{problem.name}</h2>
-        <div style={{ marginBottom: 8 }}>
-          <a
-            href={problem.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ marginRight: 16, color: '#0074d9', fontSize: 15, textDecoration: 'underline' }}
-          >
-            View on Infoarena
-          </a>
-          <a
-            href={`https://www.infoarena.ro/job_detail/${problem.id}?action=view-source`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#0074d9', fontSize: 15, textDecoration: 'underline' }}
-          >
-            View Code
-          </a>
-        </div>
+    <div className="problem-details-card">
+      <div style={{ width: '100%' }}>
+        <h2 className="problem-details-title">{problem.name}</h2>
+      </div>
+      <div className="problem-details-links-alt">
+        <a
+          href={problem.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="infoarena-btn"
+        >
+          <span className="icon" role="img" aria-label="Infoarena">🌐</span> Infoarena
+        </a>
+        <a
+          href={`https://www.infoarena.ro/job_detail/${problem.id}?action=view-source`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="infoarena-btn"
+        >
+          <span className="icon" role="img" aria-label="Code">📝</span> Code
+        </a>
       </div>
       {editorial ? (
         <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+          <div className="problem-details-tabs" style={{position: 'relative'}}>
+            <span
+              className="flip-highlight"
+              style={{
+                transform: tab === 'editorial' ? 'translateX(100%)' : 'translateX(0%)',
+              }}
+            />
             <button onClick={() => setTab('hints')} disabled={tab === 'hints'}>Hints</button>
             <button onClick={() => setTab('editorial')} disabled={tab === 'editorial'}>Editorial</button>
           </div>
           {tab === 'hints' ? (
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div className="problem-details-accordion">
               {editorial.hints.map((hint, i) => (
                 <AccordionBox key={i} title={`Hint ${i + 1}`}>
                   <MarkdownView>{hint}</MarkdownView>
@@ -88,7 +94,7 @@ const ProblemDetails: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div className="problem-details-accordion">
               <AccordionBox title="Editorial">
                 <MarkdownView>{editorial.editorial}</MarkdownView>
               </AccordionBox>
@@ -97,13 +103,13 @@ const ProblemDetails: React.FC = () => {
         </>
       ) : (
         <>
-          <button onClick={handleGenerate} disabled={loading}>
+          <button className="problem-details-generate-btn" onClick={handleGenerate} disabled={loading}>
             {loading ? 'Generating...' : 'Generate Hints/Editorial'}
           </button>
           {error && <div style={{ color: 'red', marginTop: 8 }}>{error}</div>}
         </>
       )}
-      <div style={{ marginTop: 24 }}>
+      <div className="problem-details-back">
         <Link to="/">Back to list</Link>
       </div>
     </div>
