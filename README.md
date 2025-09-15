@@ -34,42 +34,60 @@ user.
 - **Modular Go Backend**: All helpers and logic are now in an internal Go package for maintainability.
 - **Frontend/Backend Separation**: React frontend and Go backend communicate via REST API.
 
+
 ## Quick Start
 
 ### 1. Build the CLI
 
-```sh
+**Windows:**
+```powershell
 go build -o bin/iasi.exe cmd/main.go
 ```
 
-### 2. Start the Tracker (UI & Backend)
-
+**Linux:**
 ```sh
-bin/iasi.exe run <username>
+go build -o bin/iasi cmd/main.go
 ```
 
-- This command starts both the Go backend API and the React tracker UI servers.
-- The tracker UI will open at [http://localhost:5173](http://localhost:5173)
-- The Go backend API is at [http://localhost:8080](http://localhost:8080)
-
-### 2.1. Set up Gemini API Key (for AI features)
+### 2. Set up Gemini API Key (for AI features)
 
 To enable AI-powered hints and editorials, you must set your Gemini API key as an environment variable before running the backend:
 
-**On Windows PowerShell:**
+**Windows PowerShell:**
 ```powershell
 $env:GEMINI_API_KEY="your-key-here"
 ```
 
+**Linux/macOS Bash:**
+```sh
+export GEMINI_API_KEY="your-key-here"
+```
+
 Replace `your-key-here` with your actual Gemini API key. You can get a key from Google AI.
 
-- You must run this command before starting the backend with `bin/iasi.exe run <username>`.
-- For permanent setup, add it to your user or system environment variables.
+You must run this command in the same terminal session before starting the backend. For permanent setup, add it to your user or system environment variables.
 
-### 3. Use the Web UI
+### 3. Start the Tracker (UI & Backend)
+
+**Windows:**
+```powershell
+bin/iasi.exe run <username>
+```
+
+**Linux:**
+```sh
+bin/iasi run <username>
+```
+
+This command starts both the Go backend API and the React tracker UI servers.
+- The tracker UI will open at [http://localhost:5173](http://localhost:5173)
+- The Go backend API is at [http://localhost:8080](http://localhost:8080)
+
+### 4. Use the Web UI
 - Check/uncheck problems to track your progress.
 - Use the search and sort controls for fast navigation.
 - Progress is saved in your browser and shared across all usernames.
+
 
 ## Project Structure
 
