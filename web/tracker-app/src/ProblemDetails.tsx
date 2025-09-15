@@ -9,6 +9,9 @@ interface EditorialData {
   editorial: string;
 }
 
+const LOCKS_KEY = 'iasi_tracker_problem_locks';
+type LocksState = Record<string, { hints: boolean[]; editorial: boolean }>;
+
 const ProblemDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -16,6 +19,7 @@ const ProblemDetails: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'hints' | 'editorial'>('hints');
+  const [locks, setLocks] = useState<{ hints: boolean[]; editorial: boolean }>({ hints: [], editorial: false });
 
   useEffect(() => {
     fetch(`/problems`)
@@ -31,7 +35,51 @@ const ProblemDetails: React.FC = () => {
       })
       .then(setEditorial)
       .catch(() => setEditorial(null));
+    // Load locks from localStorage
+    const allLocks: LocksState = JSON.parse(localStorage.getItem(LOCKS_KEY) || '{}');
+    if (id && allLocks[id]) {
+      setLocks(allLocks[id]);
+    }
   }, [id]);
+
+  // When editorial loads, initialize locks if not present
+  useEffect(() => {
+    if (!editorial || !id) return;
+    setLocks(prev => {
+      if (prev.hints.length === editorial.hints.length && typeof prev.editorial === 'boolean') return prev;
+      const newLocks = {
+        hints: Array(editorial.hints.length).fill(true),
+        editorial: true,
+      };
+      // Save to localStorage
+      const allLocks: LocksState = JSON.parse(localStorage.getItem(LOCKS_KEY) || '{}');
+      allLocks[id] = newLocks;
+      localStorage.setItem(LOCKS_KEY, JSON.stringify(allLocks));
+      return newLocks;
+    });
+  }, [editorial, id]);
+
+  const unlockHint = (idx: number) => {
+    if (!window.confirm('Are you sure you want to unlock this hint?')) return;
+    setLocks(prev => {
+      const next = { ...prev, hints: prev.hints.slice() };
+      next.hints[idx] = false;
+      const allLocks: LocksState = JSON.parse(localStorage.getItem(LOCKS_KEY) || '{}');
+      allLocks[id!] = next;
+      localStorage.setItem(LOCKS_KEY, JSON.stringify(allLocks));
+      return next;
+    });
+  };
+  const unlockEditorial = () => {
+    if (!window.confirm('Are you sure you want to unlock the editorial?')) return;
+    setLocks(prev => {
+      const next = { ...prev, editorial: false };
+      const allLocks: LocksState = JSON.parse(localStorage.getItem(LOCKS_KEY) || '{}');
+      allLocks[id!] = next;
+      localStorage.setItem(LOCKS_KEY, JSON.stringify(allLocks));
+      return next;
+    });
+  };
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -88,14 +136,23 @@ const ProblemDetails: React.FC = () => {
           {tab === 'hints' ? (
             <div className="problem-details-accordion">
               {editorial.hints.map((hint, i) => (
-                <AccordionBox key={i} title={`Hint ${i + 1}`}>
+                <AccordionBox
+                  key={i}
+                  title={`Hint ${i + 1}`}
+                  locked={locks.hints[i]}
+                  onUnlock={() => unlockHint(i)}
+                >
                   <MarkdownView>{hint}</MarkdownView>
                 </AccordionBox>
               ))}
             </div>
           ) : (
             <div className="problem-details-accordion">
-              <AccordionBox title="Editorial">
+              <AccordionBox
+                title="Editorial"
+                locked={locks.editorial}
+                onUnlock={unlockEditorial}
+              >
                 <MarkdownView>{editorial.editorial}</MarkdownView>
               </AccordionBox>
             </div>
